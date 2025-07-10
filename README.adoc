@@ -1,0 +1,187 @@
+# Conan tutorial
+The purpose of this article is to guide you through the most important of Conan using practical examples. From using already packaged by Conan, to how to package your libraries
+
+:toc:
+:sectnums:
+
+== Conan consuming packages
+This section show you how to build your projects using Conan to manage your dependencies. We'll begin with a basic example in this repository, that is using our beloved friend called _CMake_. We'll make our project to depend to some libraries such as *fmt*. The project will use a _conanfile.txt_ to declare the dependencies
+
+NOTE: The conanfile.txt isn't the only way for you do declare the dependencies. Indeed, conan also make use of Python to declare those dependencies.
+
+We will also cover how you can not only use _regular_ libraries with Conan but also manage tools you may need to use while building: CMake, actually there are some, but we'll take CMake as example and if you want a refresh over CMake, I did some tutorial about it link:https://github.com/dev-clement/CMakeSeries.git[here !]
+
+Then, we'll explain different Conan concepts like settings and options and how you can use them to build your projects for several configuration such as Debug or even Release using static or even shared libraries.
+
+== Using Conan with CMake
+As I said above, we'll make use of CMake to make our project built, then we'll use Conan with it.
+
+So let's get started with an example: We are going to create a simple hello world application that is using `fmt` to display the string in the output.
+
+Also we'll use CMake as our build system in this case to keep in mind that Conan *works with any build system* even though in this tutorial CMake will be the build system used.
+
+So the first step is to make our project, a simple project with a _CMakeLists.txt_ that is used to generate our build, and also a _main.cpp_ file used for demonstrate that the projects works with the `fmt` library, then the structure will be something like:
+
+image::assets/images/folder-structure.png[]
+
+This project contains a basic _CMakeLists.txt_ file that is including `fmt` library dependency and the source code for a simple "Hello World!" program written using `fmt`.
+
+Let's have a look:
+```cpp
+#include <fmt/base.h>
+
+int main() {
+    fmt::print("Hello, World\n");
+}
+```
+NOTE: {fmt} is an open-source formatting library providing a fast and safe alternative to _C_ stdio and C++ iostreams.
+
+Then there is also the _CMakeLists.txt_ file that you can see here:
+
+```cmake
+cmake_minimum_required(VERSION 3.5)
+
+project(HelloWorld
+        VERSION 0.0.1
+        DESCRIPTION "The leading Hello World app"
+        LANGUAGES CXX)
+        
+add_executable(${PROJECT_NAME} src/main.cpp)
+target_link_libraries(${PROJECT_NAME} PUBLIC fmt::fmt)
+```
+Our application relies on the _fmt_ library. Conan by default, tries to install libraries from a remote server called link:https://conan.io/center[conan center], where you can search for a library of your choosing and also check the available versions. In our case, after checking the available version of link:https://conan.io/center/recipes/fmt?version=[fmt] we decide to choose the latest version named *fmt/11.2.0*.
+
+NOTE: The easiest way to install the *fmt* library and find it from our project with Conan is by making use of the _conanfile.txt_ file. Let's create one with the following content:
+
+```ini
+[requires]
+fmt/11.2.0
+
+[generators]
+CMakeDeps
+CMakeToolchain
+```
+As you may have noticed, we decide to add 2 sections in this file with a syntax that is looking like an ini file.
+
+* The *[requires]* section is where we declare the libraries we want to use in the project, in this case, we want to use *fmt/11.2.0*.
+* The *[generators]* section is where to tell Conan to generate the files that the compilers or even build systems will use to find the dependencies and build the given project. In our case, as our project is based on _CMake_ we'll use link:https://docs.conan.io/2/reference/tools/cmake/cmakedeps.html#conan-tools-cmakedeps[CMakeDeps] to generate information about where the *fmt* library files are installed, and then we will use link:https://docs.conan.io/2/reference/tools/cmake/cmaketoolchain.html#conan-tools-cmaketoolchain[CMakeToolchain] to pass build information to _CMake_ using a _CMake_ toolchain file.
+
+More than a _conanfile_, we need also a Conan profile to build our project. Conan profiles allow users to define a configuration sset for things like the compiler, build configuration, architecture, shared or even static libraries, etc... Conan by default, won't try to detect a profile automatically, so we need to create one. In order to let Conan try to guess the profile, based on the current OS and installed tools, in order to do that run:
+```bash
+$ conan profile detect --force
+```
+This command will detect the operating system, build architecture and compiler settings based on the environment. It will also set the build configuration as Release by default. The generated profile will be stored in the Conan home folder with name _default_ and will be used by Conan in all commands by default unless another profile is specified via the CLI. An example of the output of this command for a Windows OS would besomething like:
+```bash
+$ conan profile detect --force
+PS C:\workspace\ConanSeries> conan profile detect --force
+detect_api: Found msvc 17
+
+Detected profile:
+[settings]
+arch=x86_64
+build_type=Release
+compiler=msvc
+compiler.cppstd=14
+compiler.runtime=dynamic
+compiler.version=194
+os=Windows
+
+WARN: This profile is a guess of your environment, please check it.
+WARN: The output of this command is not guaranteed to be stable and can change in future Conan versions.
+WARN: Use your own profile files for stability.
+Saving detected profile to C:\Users\Clément\.conan2\profiles\default
+```
+
+NOTE: Conan will always set the default C++ standard as the one that the detected compiler version uses by default, except for the case of macOS using apple-clang. In this case, for appli-clang >= 11, it sets `compiler.cppstd=gnu17`. If you want to use a different C++ standard, you can edit the default profile directly. First, get the location of the default profile and change it
+
+==== Changing default profile
+In order to change the default profile, you can do something like this:
+```bash
+$ conan profile path default
+C:\Users\<username>\.conan2\profiles\default
+```
+Once you located your profile, edit it with your favorite text editor and edit or add the `compiler.cppstd` to the C++ standard you want to set to.
+
+==== Changing a compiler other than the auto-detected one
+If you want to change a Conan profile to use a compiler different from the default one. You need to change the `compiler` settings and also tell Conan explicitly where to find it using the `tools.build.compiler_executables.configuration`
+
+==== Building the project with dependencies built
+
+We will make use of Conan to install the *fmt* library and generates the file that _CMake_ needs to find this library and then build our project. We'll generate those files in the folder called _build_. In order to do so, you just have to run the following
+```bash
+$ conan install . --output-folder=build --build=missing
+```
+This command should output the following output to your standard output:
+```txt
+======== Computing dependency graph ========
+Graph root
+    conanfile.txt: C:\workspace\ConanSeries\Conan-Ep002\conanfile.txt
+Requirements
+    fmt/11.2.0#579bb2cdf4a7607621beea4eb4651e0f - Cache
+
+======== Computing necessary packages ========
+Connecting to remote 'conancenter' anonymously
+fmt/11.2.0: Main binary package '159b372171ff86fd7630aefcf978b21a606abf85' missing
+fmt/11.2.0: Checking 7 compatible configurations
+fmt/11.2.0: Found compatible package '1cf057972569a3a443d5b36ba81814a72a6467c9': compiler.version=193
+Requirements
+    fmt/11.2.0#579bb2cdf4a7607621beea4eb4651e0f:1cf057972569a3a443d5b36ba81814a72a6467c9#9db4185010fb24f5e4e4a2fb393f925f - Cache
+
+======== Installing packages ========
+fmt/11.2.0: Already installed! (1 of 1)
+
+======== Finalizing install (deploy, generators) ========
+conanfile.txt: Writing generators to C:\workspace\ConanSeries\Conan-Ep002\build
+conanfile.txt: Generator 'CMakeDeps' calling 'generate()'
+conanfile.txt: CMakeDeps necessary find_package() and targets for your CMakeLists.txt
+    find_package(fmt)
+    target_link_libraries(... fmt::fmt)
+conanfile.txt: Generator 'CMakeToolchain' calling 'generate()'
+conanfile.txt: CMakeToolchain generated: conan_toolchain.cmake
+conanfile.txt: CMakeToolchain: Preset 'conan-default' added to CMakePresets.json.
+    (cmake>=3.23) cmake --preset conan-default
+    (cmake<3.23) cmake <path> -G "Visual Studio 17 2022" -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake  -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
+conanfile.txt: CMakeToolchain generated: C:\workspace\ConanSeries\Conan-Ep002\build\CMakePresets.json
+conanfile.txt: CMakeToolchain generated: C:\workspace\ConanSeries\Conan-Ep002\CMakeUserPresets.json
+conanfile.txt: Generating aggregated env files
+conanfile.txt: Generated aggregated env files: ['conanbuild.bat', 'conanrun.bat']
+Install finished successfully
+```
+As you can see in the output, there are a couple of things that happened:
+
+* Conan installed the _fmt_ library from the remote server, which should be the *Conan Center* server by default if the library isn't available. This server stores both the Conan recipies, which are the files that define how libraries must be built, and the binaries that can be reused so we don't have to build from sources every time.
+* Conan generate several files under the *build* folder. Those files were generated by both the `CMakeToolchain` and `CMakeDeps` generators we set in the _conanfile.txt_ file. `CMakeDeps` generates files so that CMake finds the *fmt* library we ave just downloaded. On the other side, `CMakeToolchain` generates a toolchain file for CMake so that we can transparently build our project using CMake and the same settings that we detected for our default profile.
+
+Now we are ready to build and run our hello world application using the following:
+
+```bash
+$ cd build
+# In case our default compiler is VS 2022, you don't even
+# have to specify it, it depends.
+$ cmake .. -G "Visual Studio 17 2022" -DCMAKE_TOOLCHAIN_FILE="conan_toolchain.cmake"
+# -- Using Conan toolchain: C:/<>/conan_toolchain.cmake
+# -- Conan toolchain: CMAKE_GENERATOR_TOOLSET=v143
+# -- Conan toolchain: Setting CMAKE_MSVC_RUNTIME_LIBRARY=$<$<CONFIG:Release>:MultiThreadedDLL>
+# -- Conan toolchain: C++ Standard 14 with extensions OFF
+# -- The CXX compiler identification is MSVC 19.44.35209.0
+# -- Detecting CXX compiler ABI info
+# -- Detecting CXX compiler ABI info - done
+# -- Check for working CXX compiler: <>/cl.exe - skipped
+# -- Detecting CXX compile features
+# -- Detecting CXX compile features - done
+# -- Conan: Component target declared 'fmt::fmt'
+# -- Configuring done (1.8s)
+# -- Generating done (0.0s)
+# -- Build files have been written to: C:/workspace/ConanSeries/Conan-Ep002/build
+
+$ cmake --build . --config Release
+# Version MSBuild 17.14.10+8b8e13593 pour .NET Framework
+
+# 1>Checking Build System
+# Building Custom Rule C:/workspace/ConanSeries/Conan-Ep002/CMakeLists.txt
+# main.cpp
+# HelloWorld.vcxproj -> C:\workspace\ConanSeries\Conan-Ep002\build\Release\HelloWorld.exe
+# Building Custom Rule C:/workspace/ConanSeries/Conan-Ep002/CMakeLists.txt
+```
+
+NOTE: See that `CMakeToolchain` might have generates CMake *presets* files, that allows users with a modern _CMake_ (>= 3.23) to use them with _cmake --preset_ instead of passing the toolchain file argumen.
